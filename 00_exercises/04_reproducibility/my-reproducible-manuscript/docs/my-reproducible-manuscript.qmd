@@ -1,0 +1,66 @@
+---
+title: "My Reproducible Manuscript"
+author: "Daša Jalen"
+format:
+  pdf: default
+bibliography: references.bib
+---
+```{r}
+#| label: packages
+#| echo: false
+
+# Load penguins
+library(ggplot2)
+```
+
+## Meet Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Meet the penguins
+
+The penguins data from the [palmerpenguins](https://allisonhorst.github.io/palmerpenguins/) package [@PalmerpenguinsDataPackage] contains size measurements for 344 penguins from three species observed on three islands in the Palmer Archipelago, Antarctica. It is a better alternative to the frequently used iris data in statistics and data science teaching materials [@m.horstPalmerArchipelagoPenguins2022].
+
+![](https://allisonhorst.github.io/palmerpenguins/reference/figures/lter_penguins.png)
+
+## Results
+
+```{r}
+#| label: plotting-penguins
+#| warning: false
+
+# Read data
+penguins <- read.csv("../data/data.csv")
+
+# Plot penguins
+ggplot(penguins, 
+       aes(x = `Flipper.Length..mm.`, y = `Culmen.Length..mm.`)) +
+        geom_point(aes(color = Species, shape = Species)) +
+        scale_color_manual(values = c("darkorange","purple","cyan4")) +
+        labs(
+                title = "Flipper and Culmen length",
+                subtitle = "Dimensions for penguins at Palmer Station LTER",
+                x = "Flipper length (mm)", y = "Culmen length (mm)",
+                color = "Penguin species", shape = "Penguin species"
+        ) +
+        theme_minimal()
+```
+
+## Inline code
+
+There are `r sum(penguins$Species=='Gentoo')` Gentoo penguins, `r sum(penguins$Species=='Adelie')` Adelie and `r sum(penguins$Species=='Chinstrap')` Chinstrap penguins. This makes for a total of `r nrow(penguins)` penguins.
+
+## Sourcing code
+
+```{r}
+#| label: addition-function
+#| file: "../scripts/do_addition.R"
+#| eval: true
+```
+
+```{r}
+#| label: addition
+
+do_addition(3,2)
+```
+
