@@ -1,0 +1,156 @@
+---
+title: "Reproducible Simulation Study"
+author: "Daša Jalen"
+date: last-modified
+format:
+  pdf: default
+bibliography: references.bib
+---
+
+This report reproduces a small scale simulation study from @boulesteixIntroductionStatisticalSimulations2020, which uses data from 5092 subjects in the 2015–2016 National Health and Nutrition
+Examination Survey (NHANES) (for more information visit the [official page](https://wwwn.cdc.gov/nchs/nhanes/)). The NHANES study investigated the association between glycated haemoglobin (HbA2c) levels and systolic blood pressure while adjusting for age, gender and body mass index (BMI). In the present study, we are interested in the impact of measurement error on a continuous exposure (HbA2c) and/or continuous confounding variable (BMI).
+
+### Preparing the data
+
+Before conducting further analysis, we rename the variables for clarity, remove underage participants by setting age < 18 to NA and select only the relevant variables (age, sex, BMI, HbA2c levels and systolic blood pressure).
+
+```{r}
+#| label: load-packages
+#| echo: false
+#| warning: false
+#| message: false
+#| output: false
+#| include: false
+
+library(Hmisc)
+library(mice)
+library(tidyverse)
+```
+
+```{r}
+#| label: load-data
+#| echo: false
+#| warning: false
+#| message: false
+#| output: false
+#| include: false
+
+d1 <- sasxport.get("../data/DEMO_I.XPT")
+d2 <- sasxport.get("../data/BPX_I.XPT")
+d3 <- sasxport.get("../data/BMX_I.XPT")
+d4 <- sasxport.get("../data/GHB_I.XPT")
+d5 <- sasxport.get("../data/TCHOL_I.XPT")
+d1.t <- subset(d1,select=c("seqn","riagendr","ridageyr"))
+d2.t <- subset(d2,select=c("seqn","bpxsy1"))
+d3.t <- subset(d3,select=c("seqn","bmxbmi"))
+d4.t <- subset(d4,select=c("seqn","lbxgh"))
+d5.t <- subset(d5,select=c("seqn","lbdtcsi"))
+d <- merge(d1.t,d2.t)
+d <- merge(d,d3.t)
+d <- merge(d,d4.t)
+d <- merge(d,d5.t)
+```
+
+```{r}
+#| label: prepare-vars
+
+# renaming the variables
+d$age <- d$ridageyr
+d$sex <- d$riagendr
+d$bp <- d$bpxsy1
+d$bmi <- d$bmxbmi
+d$HbA1C <- d$lbxgh
+d$chol <- d$lbdtcsi
+
+# setting observations with age < 18 to NA
+d$age[d$age<18] <- NA
+
+# selecting complete cases
+dc <- cc(subset(d,select=c("age","sex","bmi","HbA1C","bp")))
+```
+
+### Linear regression analysis
+
+First we investigate the effect of HbA1C on blood pressure with and without including BMI.
+
+```{r}
+#| label: lm-summary
+
+# model without the confounding variable (BMI)
+summary(lm(bp ~ HbA1C + age + as.factor(sex), data=dc))
+confint(lm(bp ~ HbA1C + age + as.factor(sex), data=dc))
+```
+
+The effect of HbA1C on blood pressure is positive and significant, b = 1.13, SE = 0.2, 95% CI [0.73, 1.52], p < 0.001.
+
+```{r}
+#| label: lm-summary-bmi
+
+# model with the confounding variable
+summary(lm(bp ~ HbA1C + bmi + age + as.factor(sex), data=dc))
+confint(lm(bp ~ HbA1C + bmi + age + as.factor(sex), data=dc))
+```
+
+After including BMI as a confounding variable, the effect of HbA1C on blood pressure drops, though it remains significant, b = 0.75, SE, 0.21, 95% CI [0.35, 1.16], p < 0.001. The impact of BMI on blood pressure is also positive and significant, b = 0.29, SE = 0.03, 95% CI [0.22, 0.35], p < 0.001.
+
+### Simulation of measurement error
+
+To simulate the effect of measurement error, we artificially add it to our confounding and exposure variables by sampling from the normal distribution with a mean of zero and a standard deviation varying across conditions (from no measurement error to 50% of the variance in the variables attributable to measurement error). We repeat the simulation 1000 times and average the results (regression coefficient estimates) per condition.
+
+```{r}
+#| label: measurement-error-simulation
+#| output: false
+
+ref <- lm(bp ~ HbA1C + bmi + age + as.factor(sex), data=dc)$coef[2]
+n.sim <- 1e3
+perc.me.exp <- seq(0,.5,.1)
+perc.me.conf<- seq(0,.5,.1)
+scenarios <- expand.grid(perc.me.exp,perc.me.conf)
+var.exp <- var(dc$HbA1C)
+var.conf <- var(dc$bmi)
+n <- dim(dc)[1]
+beta.hat <- matrix(ncol=dim(scenarios)[1], nrow=n.sim)
+for (k in 1:n.sim){
+  print(k)
+  set.seed(k)
+  for (i in 1:dim(scenarios)[1]){
+    var.me.exp <- var.exp*scenarios[i,1]/(1-scenarios[i,1])
+    var.me.conf <- var.conf*scenarios[i,2]/(1-scenarios[i,2])
+    dc$HbA1C.me <- dc$HbA1C + rnorm(dim(dc)[1], 0, sqrt(var.me.exp) )
+    dc$bmi.me <- dc$bmi + rnorm(dim(dc)[1], 0, sqrt(var.me.conf) )
+    beta.hat[k,i] <- lm(bp ~ HbA1C.me + age + bmi.me + as.factor(sex), data=dc)$coef[2]
+  }}
+```
+
+Figure 1 displays the results of the simulation study, specifically, the estimates of the effect of HbA1C on blood pressure for varying levels of measurement error in the confounding and exposure variables. The effect decreases when measurement error is added to HbA1C but not when it is added to BMI. Conversely, the effect becomes stronger when measurement error is added only to BMI. When added to both variables, these effects cancel each other out. Overall the measurement error on HbA1C seems more influential than measurement error on BMI.
+
+```{r}
+#| label: measurement-error-plot
+#| echo: false
+#| fig-cap: "Coefficient estimates across simulation conditions"
+
+tot.mat <- cbind(100*scenarios,apply(beta.hat,2,mean))
+colnames(tot.mat) <- c("me.exp","me.conf","estimate")
+FIGURE <- ggplot(tot.mat, aes(me.exp, me.conf)) +
+  geom_tile(color="white",aes(fill = estimate)) +
+  geom_text(aes(label = round(estimate, 2))) +
+  scale_fill_gradient2(low="#D55E00",mid="white",high = "#56B4E9", midpoint=ref) +
+  labs(x=paste("% of total variance of HbA1c due to measurement error"),
+       y=paste("% of total variance of BMI due to measurement error")) +
+  coord_equal()+
+  scale_y_continuous(breaks=unique(tot.mat[,1]))+
+  scale_x_continuous(breaks=unique(tot.mat[,1]))+
+  theme(panel.background = element_rect(fill='white', colour='grey'),
+        plot.title=element_text(hjust=0),
+        axis.ticks=element_blank(),
+        axis.title=element_text(size=10),
+        axis.text=element_text(size=10),
+        legend.title=element_text(size=12),
+        legend.text=element_text(size=10))
+FIGURE
+```
+
+## References
+
+::: {#refs}
+:::
