@@ -1,5 +1,7 @@
-# Markup languages and reproducible programming in statistics
+# Deliverables
 
-Deliverables for Markup languages and reproducible programming in statistics (202000010).
+personal website: https://dasajalen.github.io/
+
+link to template on GitHub: https://github.com/dasajalen/dasajalen.github.io
 
 
